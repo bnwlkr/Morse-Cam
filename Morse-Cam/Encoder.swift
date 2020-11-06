@@ -15,7 +15,7 @@ protocol EncoderDelegate {
 }
 
 class Encoder {
-	private var torchDevice: AVCaptureDevice!
+	private var torchDevice: AVCaptureDevice?
     private var currentMessage: [Bool] = []
     private var index = 0
     private var timer: Timer!
@@ -23,10 +23,7 @@ class Encoder {
     var delegate: EncoderDelegate!
 	
 	init() {
-		let torchDeviceMaybe = AVCaptureDevice.default(for: AVMediaType.video)
-        if torchDeviceMaybe != nil {
-            self.torchDevice = torchDeviceMaybe!
-        }
+        self.torchDevice = AVCaptureDevice.default(for: AVMediaType.video)
 	}
 	
 	
@@ -53,14 +50,16 @@ class Encoder {
                 currentMessage.append(contentsOf: Array<Bool>(repeating: false, count: Int(LETTER_GAP)))
             }
 		}
-        timer = Timer.scheduledTimer(timeInterval: DOT_DURATION / 3, target: self, selector: #selector(timerTick), userInfo: nil, repeats: true)
+        if self.torchDevice != nil {
+            timer = Timer.scheduledTimer(timeInterval: DOT_DURATION / 3, target: self, selector: #selector(timerTick), userInfo: nil, repeats: true)
+        }
 	}
 	
 	
     @objc func timerTick() {
-        if currentMessage[index] && torchDevice.torchMode != .on {
+        if currentMessage[index] && torchDevice!.torchMode != .on {
             toggleFlash()
-        } else if !currentMessage[index] && torchDevice.torchMode != .off {
+        } else if !currentMessage[index] && torchDevice!.torchMode != .off {
             toggleFlash()
         }
         self.delegate.encoderTransmitted(progress: Float(index)/Float(currentMessage.count-1))
@@ -76,21 +75,29 @@ class Encoder {
     }
 	
     func toggleFlash() {
-		do {
-			try torchDevice.lockForConfiguration()
-			if (torchDevice.torchMode == AVCaptureDevice.TorchMode.on) {
-				torchDevice.torchMode = AVCaptureDevice.TorchMode.off
-			} else {
-				do {
-					try torchDevice.setTorchModeOn(level: 1.0)
-				} catch {
-					print(error)
-				}
-			}
-			torchDevice.unlockForConfiguration()
-		} catch {
-			print(error)
-		}
-	}
-	
+        guard let torchDevice = self.torchDevice, torchDevice.isTorchAvailable else {
+            NSLog("No torch is available on this device.")
+            return
+        }
+                
+        do {
+            try torchDevice.lockForConfiguration()
+            defer {
+                torchDevice.unlockForConfiguration()
+            }
+            
+            switch torchDevice.torchMode {
+            case .on:
+                torchDevice.torchMode = .off
+                
+            case .off, .auto:
+                try torchDevice.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                
+            @unknown default:
+                NSLog("Code requires update for a new case in \(AVCaptureDevice.TorchMode.self).")
+            }
+        } catch {
+            NSLog("Failed to change the torch level: \(error)")
+        }
+    }
 }

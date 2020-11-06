@@ -19,7 +19,6 @@ class VideoViewController: UIViewController, DecoderDelegate, UITextFieldDelegat
     
     private var transmitting = false
 	
-	private var videoDevice: AVCaptureDevice!
 	private var videoDataOutput: AVCaptureVideoDataOutput!
 	private var videoDeviceInput: AVCaptureDeviceInput!
     
@@ -49,10 +48,12 @@ class VideoViewController: UIViewController, DecoderDelegate, UITextFieldDelegat
 		self.decoder.delegate = self
         self.encoder.delegate = self
         self.previewView.videoPreviewLayer.videoGravity = AVLayerVideoGravity.resizeAspectFill
-		sessionQueue.async {
-			self.configureSession()
-			self.session.startRunning()
-		}
+        if let camera = AVCaptureDevice.default(for: AVMediaType.video) {
+            sessionQueue.async {
+                self.configureSession(camera: camera)
+                self.session.startRunning()
+            }
+        }
         self.inputField.delegate = self
 	}
     
@@ -158,21 +159,20 @@ class VideoViewController: UIViewController, DecoderDelegate, UITextFieldDelegat
 	}
 	
 
-	func configureSession() {
+    func configureSession(camera: AVCaptureDevice) {
 		session.beginConfiguration()
-		self.videoDevice = AVCaptureDevice.default(for: AVMediaType.video)!
 		do {
-			let videoDeviceInput = try AVCaptureDeviceInput(device: self.videoDevice)
+			let videoDeviceInput = try AVCaptureDeviceInput(device: camera)
 			if session.canAddInput(videoDeviceInput) {
 				session.addInput(videoDeviceInput)
-				self.videoDeviceInput = videoDeviceInput
+                self.videoDeviceInput = videoDeviceInput
 			} else {
 				print("Failed to add video device input")
 			}
-            try self.videoDevice.lockForConfiguration()
-            self.videoDevice.activeVideoMinFrameDuration = CMTimeMake(value: 1, timescale: Int32(FPS))
-            self.videoDevice.activeVideoMaxFrameDuration = CMTimeMake(value: 1, timescale: Int32(FPS))
-            self.videoDevice.unlockForConfiguration()
+            try camera.lockForConfiguration()
+            camera.activeVideoMinFrameDuration = CMTimeMake(value: 1, timescale: Int32(FPS))
+            camera.activeVideoMaxFrameDuration = CMTimeMake(value: 1, timescale: Int32(FPS))
+            camera.unlockForConfiguration()
 		} catch {
 			print(error)
 		}
